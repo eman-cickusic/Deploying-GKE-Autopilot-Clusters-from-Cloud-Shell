@@ -1,0 +1,68 @@
+name: Validate GKE Manifests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-yaml:
+    runs-on: ubuntu-latest
+    name: Validate Kubernetes Manifests
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+    
+    - name: Validate Pod Manifest
+      run: |
+        kubectl --dry-run=client --validate=true -f manifests/new-nginx-pod.yaml
+        
+    - name: Validate Service Manifest  
+      run: |
+        kubectl --dry-run=client --validate=true -f manifests/nginx-service.yaml
+        
+    - name: Check script syntax
+      run: |
+        bash -n scripts/setup-cluster.sh
+        bash -n scripts/deploy-nginx.sh
+        bash -n scripts/cleanup.sh
+        
+    - name: Lint YAML files
+      uses: ibiqlik/action-yamllint@v3
+      with:
+        file_or_dir: manifests/
+        config_file: .yamllint.yml
+        
+    - name: Validate HTML
+      uses: Cyb3r-Jak3/html5validator-action@v7.2.0
+      with:
+        root: html/
+        
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'

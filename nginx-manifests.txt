@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: new-nginx
+  labels:
+    name: new-nginx
+    app: nginx
+    version: v1
+  annotations:
+    description: "Nginx pod deployed using declarative approach"
+    created-by: "gke-autopilot-deployment-project"
+spec:
+  containers:
+  - name: new-nginx
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+      name: http
+      protocol: TCP
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    volumeMounts:
+    - name: nginx-html
+      mountPath: /usr/share/nginx/html
+      readOnly: false
+  volumes:
+  - name: nginx-html
+    emptyDir: {}
+  restartPolicy: Always

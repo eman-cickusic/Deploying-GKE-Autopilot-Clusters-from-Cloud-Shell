@@ -1,0 +1,326 @@
+# Troubleshooting Guide
+
+This guide covers common issues you might encounter when deploying GKE Autopilot clusters and their solutions.
+
+## 🚨 Common Issues and Solutions
+
+### 1. Cluster Creation Issues
+
+#### Issue: Cluster creation fails with quota exceeded
+```
+ERROR: (gcloud.container.clusters.create-auto) ResponseError: code=403, message=Quota exceeded
+```
+
+**Solution:**
+- Check your project quotas in the GCP Console
+- Request quota increase for Compute Engine resources
+- Try a different region with available capacity
+
+#### Issue: Insufficient permissions
+```
+ERROR: (gcloud.container.clusters.create-auto) ResponseError: code=403, message=Forbidden
+```
+
+**Solution:**
+```bash
+# Ensure you have the required roles
+gcloud projects add-iam-policy-binding PROJECT_ID \
+    --member="user:your-email@example.com" \
+    --role="roles/container.admin"
+```
+
+### 2. Pod Deployment Issues
+
+#### Issue: Pod stuck in Pending state
+```
+NAME        READY   STATUS    RESTARTS   AGE
+nginx-pod   0/1     Pending   0          5m
+```
+
+**Diagnosis:**
+```bash
+kubectl describe pod nginx-pod
+kubectl get events --sort-by=.metadata.creationTimestamp
+```
+
+**Common causes and solutions:**
+- **Insufficient resources:** Wait for autopilot to scale up nodes
+- **Image pull errors:** Check image name and registry access
+- **Node selector issues:** Remove node selectors in autopilot
+
+#### Issue: Pod in CrashLoopBackOff state
+```
+NAME        READY   STATUS             RESTARTS   AGE
+nginx-pod   0/1     CrashLoopBackOff   3          2m
+```
+
+**Diagnosis:**
+```bash
+kubectl logs nginx-pod
+kubectl logs nginx-pod --previous
+kubectl describe pod nginx-pod
+```
+
+**Solutions:**
+- Check application logs for errors
+- Verify container configuration
+- Check resource limits and requests
+
+### 3. Service and Networking Issues
+
+#### Issue: External IP stuck in \<pending\> state
+```
+NAME            TYPE           EXTERNAL-IP   PORT(S)
+nginx-service   LoadBalancer   <pending>     80:32000/TCP
+```
+
+**Solutions:**
+- Wait 5-10 minutes for GCP to provision load balancer
+- Check project quotas for load balancers
+- Verify service configuration:
+
+```bash
+kubectl describe service nginx-service
+kubectl get events
+```
+
+#### Issue: Cannot access service externally
+**Diagnosis steps:**
+```bash
+# Check service endpoints
+kubectl get endpoints nginx-service
+
+# Test internal connectivity
+kubectl run test-pod --image=busybox -it --rm -- wget -qO- nginx-service
+
+# Check firewall rules
+gcloud compute firewall-rules list
+```
+
+### 4. kubectl Configuration Issues
+
+#### Issue: kubectl cannot connect to cluster
+```
+error: You must be logged in to the server (Unauthorized)
+```
+
+**Solutions:**
+```bash
+# Re-authenticate with gcloud
+gcloud auth login
+
+# Get cluster credentials
+gcloud container clusters get-credentials CLUSTER_NAME --region REGION
+
+# Check current context
+kubectl config current-context
+```
+
+#### Issue: Wrong cluster context
+```bash
+# List all contexts
+kubectl config get-contexts
+
+# Switch to correct context
+kubectl config use-context CONTEXT_NAME
+```
+
+### 5. Resource Management Issues
+
+#### Issue: Resource quota exceeded
+**Check resource usage:**
+```bash
+kubectl top nodes
+kubectl top pods
+kubectl describe nodes
+```
+
+**Solutions:**
+- Wait for autopilot to scale down unused resources
+- Delete unnecessary pods/deployments
+- Check resource requests and limits
+
+### 6. File Copy Issues
+
+#### Issue: kubectl cp command fails
+```
+error: unable to upgrade connection: container not found
+```
+
+**Solutions:**
+```bash
+# Ensure pod is running
+kubectl get pods
+
+# Check container name (for multi-container pods)
+kubectl describe pod POD_NAME
+
+# Use correct syntax
+kubectl cp local-file POD_NAME:/remote/path
+```
+
+### 7. Autopilot-Specific Issues
+
+#### Issue: Privileged containers not allowed
+```
+admission webhook "gke-autopilot-webhook" denied the request
+```
+
+**Solution:**
+- Remove privileged: true from pod specs
+- Use Autopilot-compatible configurations
+- Consider using GKE Standard if privileged access is required
+
+#### Issue: Host path volumes not supported
+**Solution:**
+```yaml
+# Instead of hostPath, use:
+volumes:
+- name: data
+  emptyDir: {}
+# or
+- name: config
+  configMap:
+    name: my-config
+```
+
+## 🔧 Diagnostic Commands
+
+### Cluster Information
+```bash
+# Cluster status
+kubectl cluster-info
+kubectl get nodes -o wide
+
+# Component status
+kubectl get componentstatuses
+
+# Cluster events
+kubectl get events --all-namespaces --sort-by='.lastTimestamp'
+```
+
+### Pod Debugging
+```bash
+# Pod details
+kubectl describe pod POD_NAME
+kubectl logs POD_NAME
+kubectl logs POD_NAME --previous
+
+# Interactive debugging
+kubectl exec -it POD_NAME -- /bin/bash
+kubectl exec -it POD_NAME -- sh
+
+# Port forwarding for testing
+kubectl port-forward POD_NAME 8080:80
+```
+
+### Service Debugging
+```bash
+# Service details
+kubectl describe service SERVICE_NAME
+kubectl get endpoints SERVICE_NAME
+
+# Test service connectivity
+kubectl run debug-pod --image=busybox -it --rm
+# Inside the pod:
+nslookup SERVICE_NAME
+wget -qO- SERVICE_NAME:PORT
+```
+
+### Resource Monitoring
+```bash
+# Resource usage
+kubectl top nodes
+kubectl top pods
+
+# Resource quotas
+kubectl describe quota
+kubectl describe limitrange
+```
+
+## 🚀 Performance Optimization
+
+### Resource Requests and Limits
+```yaml
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "128Mi"
+    cpu: "100m"
+```
+
+### Health Checks
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+```
+
+## 📞 Getting Help
+
+### Google Cloud Support
+- [GKE Documentation](https://cloud.google.com/kubernetes-engine/docs)
+- [GKE Autopilot Documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster)
+- [Cloud Console](https://console.cloud.google.com/kubernetes)
+
+### Community Resources
+- [Kubernetes Slack](https://kubernetes.slack.com/)
+- [Stack Overflow - GKE](https://stackoverflow.com/questions/tagged/google-kubernetes-engine)
+- [Google Cloud Community](https://www.googlecloudcommunity.com/)
+
+### Useful Commands for Support
+When asking for help, include output from these commands:
+```bash
+kubectl version
+gcloud version
+kubectl get nodes -o wide
+kubectl get pods -o wide
+kubectl describe pod POD_NAME
+kubectl logs POD_NAME
+kubectl get events --sort-by=.metadata.creationTimestamp
+```
+
+## 🧪 Testing Your Deployment
+
+### Basic Health Check Script
+```bash
+#!/bin/bash
+echo "=== Cluster Health Check ==="
+echo "Cluster Info:"
+kubectl cluster-info
+
+echo -e "\nNodes:"
+kubectl get nodes
+
+echo -e "\nPods:"
+kubectl get pods
+
+echo -e "\nServices:"
+kubectl get services
+
+echo -e "\nRecent Events:"
+kubectl get events --sort-by=.metadata.creationTimestamp | tail -10
+```
+
+### Load Testing
+```bash
+# Simple load test with curl
+for i in {1..100}; do
+  curl -s http://EXTERNAL_IP/test.html > /dev/null
+  echo "Request $i completed"
+done
+```
+
+Remember: Most issues with GKE Autopilot are temporary and resolve themselves as the cluster scales and optimizes resources automatically.
